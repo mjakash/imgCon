@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Image Compressor, Cropper & Resizer</title>
+    <!-- <script src="https://cdn.tailwindcss.com"></script> -->
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Cropper.js CSS -->
@@ -82,13 +83,25 @@
                 </div>
             </div>
 
-            <!-- Step 3: Set Size -->
+            <!-- Step 3: Convert Format -->
+            <div id="convertSection" class="bg-gray-50 dark:bg-gray-700/50 p-6 rounded-xl hidden">
+                <label for="formatSelect" class="block text-lg font-semibold text-gray-700 dark:text-gray-300 mb-3">Step 3: Convert Format (Optional)</label>
+                <select id="formatSelect" class="w-full px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                    <option value="original">Keep Original Format</option>
+                    <option value="image/jpeg">JPEG</option>
+                    <option value="image/png">PNG</option>
+                    <option value="image/webp">WEBP</option>
+                </select>
+                <p id="formatWarning" class="text-amber-500 text-sm mt-2 hidden">Note: Setting a target size will convert the image to JPEG.</p>
+            </div>
+
+            <!-- Step 4: Set Size -->
             <div class="bg-gray-50 dark:bg-gray-700/50 p-6 rounded-xl">
-                 <label for="sizeInput" class="block text-lg font-semibold text-gray-700 dark:text-gray-300 mb-3">Step 3: Set Target Size (KB, Optional)</label>
+                 <label for="sizeInput" class="block text-lg font-semibold text-gray-700 dark:text-gray-300 mb-3">Step 4: Set Target Size (KB, Optional)</label>
                  <input type="number" id="sizeInput" placeholder="e.g., 100" class="w-full px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
             </div>
 
-            <!-- Step 4: Process -->
+            <!-- Step 5: Process -->
             <div class="text-center">
                 <button id="processBtn" class="w-full md:w-auto bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 dark:focus:ring-blue-800 transition-all duration-300 ease-in-out disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center mx-auto" disabled>
                     <span id="processBtnText">Process Image</span>
@@ -164,6 +177,11 @@
         const unitSelect = document.getElementById('unitSelect');
         const aspectLock = document.getElementById('aspectLock');
 
+        // Conversion elements
+        const convertSection = document.getElementById('convertSection');
+        const formatSelect = document.getElementById('formatSelect');
+        const formatWarning = document.getElementById('formatWarning');
+
         // State variables
         let sourceImageDataUrl = null;
         let originalMimeType = 'image/jpeg';
@@ -193,6 +211,7 @@
                 processBtn.disabled = false;
                 cropBtn.classList.remove('hidden');
                 resizeSection.classList.remove('hidden');
+                convertSection.classList.remove('hidden');
                 resultsDiv.classList.remove('hidden');
             };
             reader.readAsDataURL(file);
@@ -232,6 +251,11 @@
         heightInput.addEventListener('input', () => { lastEditedDimension = 'height'; handleDimensionChange(); });
         unitSelect.addEventListener('change', handleDimensionChange);
         aspectLock.addEventListener('change', handleDimensionChange);
+        
+        // Show warning if target size is set
+        sizeInput.addEventListener('input', (e) => {
+            formatWarning.classList.toggle('hidden', !!e.target.value);
+        });
 
 
         // Main Process Button Listener
@@ -249,7 +273,6 @@
             
             setLoading(true);
             try {
-                // Start with the current source image
                 let imageDataToProcess = sourceImageDataUrl;
 
                 // Step 1: Apply resizing if specified
@@ -258,11 +281,8 @@
                     imageDataToProcess = await getResizedImageDataUrl(imageDataToProcess);
                 }
 
-                // Step 2: Apply compression if a target size is specified
-                let finalImageDataUrl = imageDataToProcess;
-                if (!isNaN(targetSizeKB) && targetSizeKB > 0) {
-                    finalImageDataUrl = await compressToTargetSize(imageDataToProcess, targetSizeKB);
-                }
+                // Step 2: Apply format conversion and/or compression
+                const finalImageDataUrl = await generateFinalImage(imageDataToProcess, targetSizeKB);
                 
                 displayResults(finalImageDataUrl);
 
@@ -324,7 +344,6 @@
                     canvas.height = targetHeightPx;
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, targetWidthPx, targetHeightPx);
-                    // Use original mime type for resizing to preserve PNG transparency if possible
                     resolve(canvas.toDataURL(originalMimeType, 1.0));
                 };
                 img.onerror = reject;
@@ -332,9 +351,8 @@
             });
         }
 
-        function compressToTargetSize(imageDataUrl, targetSizeKB) {
-            return new Promise((resolve, reject) => {
-                const targetSizeBytes = targetSizeKB * 1024;
+        function generateFinalImage(imageDataUrl, targetSizeKB) {
+             return new Promise((resolve, reject) => {
                 const img = new Image();
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
@@ -343,22 +361,30 @@
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0);
 
-                    let compressedDataUrl;
-                    let quality = 0.95;
-                    let attempts = 10;
+                    let finalMimeType = formatSelect.value === 'original' ? originalMimeType : formatSelect.value;
+                    let quality = 1.0;
+                    
+                    // If a target size is set, we MUST use JPEG and iterate quality
+                    if (!isNaN(targetSizeKB) && targetSizeKB > 0) {
+                        finalMimeType = 'image/jpeg';
+                        quality = 0.95; // Start with high quality
+                        let attempts = 10;
+                        const targetSizeBytes = targetSizeKB * 1024;
+                        let compressedDataUrl;
 
-                    while (attempts > 0) {
-                        // Always compress to JPEG when a target size is set
-                        compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
-                        const sizeBytes = atob(compressedDataUrl.split(',')[1]).length;
-
-                        if (sizeBytes <= targetSizeBytes) break;
-                        
-                        quality -= 0.1;
-                        if (quality < 0) quality = 0;
-                        attempts--;
+                        while (attempts > 0) {
+                            compressedDataUrl = canvas.toDataURL(finalMimeType, quality);
+                            const sizeBytes = atob(compressedDataUrl.split(',')[1]).length;
+                            if (sizeBytes <= targetSizeBytes) break;
+                            quality -= 0.1;
+                            if (quality < 0) quality = 0;
+                            attempts--;
+                        }
+                        resolve(compressedDataUrl);
+                    } else {
+                        // Otherwise, just convert to the selected format at max quality
+                        resolve(canvas.toDataURL(finalMimeType, quality));
                     }
-                    resolve(compressedDataUrl);
                 };
                 img.onerror = reject;
                 img.src = imageDataUrl;
@@ -370,12 +396,20 @@
             const sizeBytes = atob(dataUrl.split(',')[1]).length;
             processedSize.textContent = `Size: ${(sizeBytes / 1024).toFixed(2)} KB`;
             downloadBtn.href = dataUrl;
+            
             // Update download filename based on type
-            if (dataUrl.startsWith('data:image/png')) {
-                downloadBtn.download = 'processed-image.png';
-            } else {
-                downloadBtn.download = 'processed-image.jpg';
+            // const mimeType = dataUrl.substring(dataUrl.indexOf(':') + 1, dataUrl.indexOf(';'));
+           const mimeType = formatSelect.value;
+            let extension = 'jpg'; // Default extension
+            if (mimeType === 'image/png') {
+                extension = 'png';
+            } else if (mimeType === 'image/webp') {
+                extension = 'webp';
+            } else if (mimeType === 'image/jpeg') {
+                extension = 'jpg';
             }
+            
+            downloadBtn.download = `processed-image.${extension}`;
         }
 
         function setLoading(isLoading) {

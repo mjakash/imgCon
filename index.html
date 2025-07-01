@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Compressor, Cropper & Resizer</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Cropper.js CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .loader {
+            border-top-color: #3498db;
+            -webkit-animation: spin 1s linear infinite;
+            animation: spin 1s linear infinite;
+        }
+        @-webkit-keyframes spin {
+            0% { -webkit-transform: rotate(0deg); }
+            100% { -webkit-transform: rotate(360deg); }
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* Cropper.js modal styles */
+        #cropModal {
+            background-color: rgba(0, 0, 0, 0.7);
+        }
+        #cropImageContainer {
+            max-width: 90vw;
+            max-height: 80vh;
+        }
+        .cropper-view-box,
+        .cropper-face {
+            border-radius: .5rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 flex items-center justify-center min-h-screen p-4">
+    <div class="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8">
+        <h1 class="text-3xl md:text-4xl font-bold text-center text-gray-900 dark:text-white mb-2">Image Toolkit</h1>
+        <p class="text-center text-gray-500 dark:text-gray-400 mb-6">Crop, resize, and compress your images.</p>
+
+        <div class="space-y-6">
+            <!-- Step 1: Upload -->
+            <div class="bg-gray-50 dark:bg-gray-700/50 p-6 rounded-xl">
+                <label for="imageUpload" class="block text-lg font-semibold text-gray-700 dark:text-gray-300 mb-3">Step 1: Upload Image</label>
+                <div class="flex flex-col sm:flex-row items-center gap-4">
+                    <input type="file" id="imageUpload" accept="image/jpeg, image/png" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-blue-900/50 dark:file:text-blue-300 dark:hover:file:bg-blue-900/70 cursor-pointer"/>
+                    <button id="cropBtn" class="w-full sm:w-auto bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition-all hidden">Crop Image</button>
+                </div>
+                <p id="uploadError" class="text-red-500 text-sm mt-2 hidden"></p>
+            </div>
+
+            <!-- Step 2: Resize -->
+            <div id="resizeSection" class="bg-gray-50 dark:bg-gray-700/50 p-6 rounded-xl hidden">
+                <label class="block text-lg font-semibold text-gray-700 dark:text-gray-300 mb-3">Step 2: Resize Image (Optional)</label>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+                    <div>
+                        <label for="widthInput" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Width</label>
+                        <input type="number" id="widthInput" class="mt-1 w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label for="heightInput" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Height</label>
+                        <input type="number" id="heightInput" class="mt-1 w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label for="unitSelect" class="block text-sm font-medium text-gray-600 dark:text-gray-400">Unit</label>
+                        <select id="unitSelect" class="mt-1 w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500">
+                            <option value="px">Pixels (px)</option>
+                            <option value="in">Inches (in)</option>
+                            <option value="cm">Centimeters (cm)</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center justify-start sm:justify-center pt-2">
+                        <input type="checkbox" id="aspectLock" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" checked>
+                        <label for="aspectLock" class="ml-2 block text-sm text-gray-700 dark:text-gray-300">Maintain aspect ratio</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: Set Size -->
+            <div class="bg-gray-50 dark:bg-gray-700/50 p-6 rounded-xl">
+                 <label for="sizeInput" class="block text-lg font-semibold text-gray-700 dark:text-gray-300 mb-3">Step 3: Set Target Size (KB, Optional)</label>
+                 <input type="number" id="sizeInput" placeholder="e.g., 100" class="w-full px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+            </div>
+
+            <!-- Step 4: Process -->
+            <div class="text-center">
+                <button id="processBtn" class="w-full md:w-auto bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 dark:focus:ring-blue-800 transition-all duration-300 ease-in-out disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center mx-auto" disabled>
+                    <span id="processBtnText">Process Image</span>
+                    <div id="loader" class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-6 w-6 ml-3 hidden"></div>
+                </button>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results" class="mt-8 hidden">
+            <h2 class="text-2xl font-bold text-center mb-6">Results</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="text-center">
+                    <h3 class="text-lg font-semibold mb-2">Preview</h3>
+                    <img id="originalPreview" class="w-full h-auto rounded-lg shadow-md mx-auto max-h-64 object-contain" src="https://placehold.co/400x300/e2e8f0/cbd5e0?text=Upload+an+image">
+                    <p id="originalSize" class="mt-2 text-sm text-gray-500 dark:text-gray-400"></p>
+                </div>
+                <div class="text-center">
+                    <h3 class="text-lg font-semibold mb-2">Processed</h3>
+                    <img id="processedPreview" class="w-full h-auto rounded-lg shadow-md mx-auto max-h-64 object-contain" src="https://placehold.co/400x300/e2e8f0/cbd5e0?text=Processed+Preview">
+                    <p id="processedSize" class="mt-2 text-sm text-gray-500 dark:text-gray-400"></p>
+                </div>
+            </div>
+            <div class="text-center mt-6">
+                 <a id="downloadBtn" href="#" download="processed-image.jpg" class="inline-block bg-green-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-4 focus:ring-green-300 dark:focus:ring-green-800 transition-all duration-300 ease-in-out">
+                    Download Processed Image
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cropper Modal -->
+    <div id="cropModal" class="fixed inset-0 w-full h-full flex items-center justify-center hidden z-50">
+        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-lg">
+            <div id="cropImageContainer">
+                <img id="imageToCrop" src="">
+            </div>
+            <div class="flex justify-center gap-4 mt-4">
+                <button id="cancelCropBtn" class="bg-gray-500 text-white font-bold py-2 px-6 rounded-lg hover:bg-gray-600">Cancel</button>
+                <button id="confirmCropBtn" class="bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-700">Confirm Crop</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cropper.js JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
+    <script>
+        // DOM element references
+        const imageUpload = document.getElementById('imageUpload');
+        const sizeInput = document.getElementById('sizeInput');
+        const processBtn = document.getElementById('processBtn');
+        const processBtnText = document.getElementById('processBtnText');
+        const loader = document.getElementById('loader');
+        const uploadError = document.getElementById('uploadError');
+        const resultsDiv = document.getElementById('results');
+        const originalPreview = document.getElementById('originalPreview');
+        const processedPreview = document.getElementById('processedPreview');
+        const originalSize = document.getElementById('originalSize');
+        const processedSize = document.getElementById('processedSize');
+        const downloadBtn = document.getElementById('downloadBtn');
+        
+        // Cropping elements
+        const cropBtn = document.getElementById('cropBtn');
+        const cropModal = document.getElementById('cropModal');
+        const imageToCrop = document.getElementById('imageToCrop');
+        const confirmCropBtn = document.getElementById('confirmCropBtn');
+        const cancelCropBtn = document.getElementById('cancelCropBtn');
+
+        // Resizing elements
+        const resizeSection = document.getElementById('resizeSection');
+        const widthInput = document.getElementById('widthInput');
+        const heightInput = document.getElementById('heightInput');
+        const unitSelect = document.getElementById('unitSelect');
+        const aspectLock = document.getElementById('aspectLock');
+
+        // State variables
+        let sourceImageDataUrl = null;
+        let originalMimeType = 'image/jpeg';
+        let cropper = null;
+        let imageAspectRatio = 1;
+        let lastEditedDimension = 'width';
+
+        // --- Event Listeners ---
+
+        imageUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            if (!['image/jpeg', 'image/png'].includes(file.type)) {
+                uploadError.textContent = 'Please select a JPG or PNG image.';
+                uploadError.classList.remove('hidden');
+                return;
+            }
+            
+            originalMimeType = file.type;
+            uploadError.classList.add('hidden');
+            
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                sourceImageDataUrl = event.target.result;
+                updateImageSource(sourceImageDataUrl, `Original Size: ${(file.size / 1024).toFixed(2)} KB`);
+                processBtn.disabled = false;
+                cropBtn.classList.remove('hidden');
+                resizeSection.classList.remove('hidden');
+                resultsDiv.classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        });
+
+        // Cropping Listeners
+        cropBtn.addEventListener('click', () => {
+            if (!sourceImageDataUrl) return;
+            imageToCrop.src = sourceImageDataUrl;
+            cropModal.classList.remove('hidden');
+            
+            if (cropper) cropper.destroy();
+            
+            cropper = new Cropper(imageToCrop, { /* ... cropper options ... */ });
+        });
+        confirmCropBtn.addEventListener('click', () => {
+             if (!cropper) return;
+            const croppedCanvas = cropper.getCroppedCanvas({ fillColor: '#fff' });
+            sourceImageDataUrl = croppedCanvas.toDataURL(originalMimeType, 1.0);
+            const sizeBytes = atob(sourceImageDataUrl.split(',')[1]).length;
+            updateImageSource(sourceImageDataUrl, `Cropped Size: ${(sizeBytes / 1024).toFixed(2)} KB`);
+            
+            cropModal.classList.add('hidden');
+            cropper.destroy();
+            cropper = null;
+        });
+        cancelCropBtn.addEventListener('click', () => {
+             cropModal.classList.add('hidden');
+            if (cropper) {
+                cropper.destroy();
+                cropper = null;
+            }
+        });
+
+        // Resizing Listeners
+        widthInput.addEventListener('input', () => { lastEditedDimension = 'width'; handleDimensionChange(); });
+        heightInput.addEventListener('input', () => { lastEditedDimension = 'height'; handleDimensionChange(); });
+        unitSelect.addEventListener('change', handleDimensionChange);
+        aspectLock.addEventListener('change', handleDimensionChange);
+
+
+        // Main Process Button Listener
+        processBtn.addEventListener('click', async () => {
+            if (!sourceImageDataUrl) {
+                alert('Please select an image first.');
+                return;
+            }
+            const targetSizeKB = parseFloat(sizeInput.value);
+            
+            if (sizeInput.value && (isNaN(targetSizeKB) || targetSizeKB <= 0)) {
+                alert('If you enter a target size, it must be a valid positive number.');
+                return;
+            }
+            
+            setLoading(true);
+            try {
+                // Start with the current source image
+                let imageDataToProcess = sourceImageDataUrl;
+
+                // Step 1: Apply resizing if specified
+                const isResizing = parseFloat(widthInput.value) > 0 || parseFloat(heightInput.value) > 0;
+                if (isResizing) {
+                    imageDataToProcess = await getResizedImageDataUrl(imageDataToProcess);
+                }
+
+                // Step 2: Apply compression if a target size is specified
+                let finalImageDataUrl = imageDataToProcess;
+                if (!isNaN(targetSizeKB) && targetSizeKB > 0) {
+                    finalImageDataUrl = await compressToTargetSize(imageDataToProcess, targetSizeKB);
+                }
+                
+                displayResults(finalImageDataUrl);
+
+            } catch (error) {
+                console.error("Processing failed:", error);
+                alert("Failed to process the image. Please check the dimensions.");
+            } finally {
+                setLoading(false);
+            }
+        });
+
+        // --- Core Functions ---
+        function updateImageSource(dataUrl, sizeText) {
+            const img = new Image();
+            img.onload = () => {
+                imageAspectRatio = img.width / img.height;
+                widthInput.value = '';
+                heightInput.value = '';
+                originalPreview.src = dataUrl;
+                originalSize.textContent = sizeText;
+                processedPreview.src = "https://placehold.co/400x300/e2e8f0/cbd5e0?text=Processed+Preview";
+                processedSize.textContent = "";
+            };
+            img.src = dataUrl;
+        }
+
+        function handleDimensionChange() {
+            if (!aspectLock.checked) return;
+            const width = parseFloat(widthInput.value);
+            const height = parseFloat(heightInput.value);
+
+            if (lastEditedDimension === 'width' && !isNaN(width) && width > 0) {
+                heightInput.value = Math.round(width / imageAspectRatio);
+            } else if (lastEditedDimension === 'height' && !isNaN(height) && height > 0) {
+                widthInput.value = Math.round(height * imageAspectRatio);
+            }
+        }
+        
+        function convertToPx(value, unit) {
+            if (unit === 'px' || isNaN(value)) return value;
+            const dpi = 96;
+            if (unit === 'in') return value * dpi;
+            if (unit === 'cm') return value * dpi / 2.54;
+            return value;
+        }
+
+        function getResizedImageDataUrl(imageDataUrl) {
+            return new Promise((resolve, reject) => {
+                const widthVal = parseFloat(widthInput.value);
+                const heightVal = parseFloat(heightInput.value);
+                const unit = unitSelect.value;
+                const targetWidthPx = Math.round(convertToPx(widthVal, unit));
+                const targetHeightPx = Math.round(convertToPx(heightVal, unit));
+
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = targetWidthPx;
+                    canvas.height = targetHeightPx;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, targetWidthPx, targetHeightPx);
+                    // Use original mime type for resizing to preserve PNG transparency if possible
+                    resolve(canvas.toDataURL(originalMimeType, 1.0));
+                };
+                img.onerror = reject;
+                img.src = imageDataUrl;
+            });
+        }
+
+        function compressToTargetSize(imageDataUrl, targetSizeKB) {
+            return new Promise((resolve, reject) => {
+                const targetSizeBytes = targetSizeKB * 1024;
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
+
+                    let compressedDataUrl;
+                    let quality = 0.95;
+                    let attempts = 10;
+
+                    while (attempts > 0) {
+                        // Always compress to JPEG when a target size is set
+                        compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+                        const sizeBytes = atob(compressedDataUrl.split(',')[1]).length;
+
+                        if (sizeBytes <= targetSizeBytes) break;
+                        
+                        quality -= 0.1;
+                        if (quality < 0) quality = 0;
+                        attempts--;
+                    }
+                    resolve(compressedDataUrl);
+                };
+                img.onerror = reject;
+                img.src = imageDataUrl;
+            });
+        }
+
+        function displayResults(dataUrl) {
+            processedPreview.src = dataUrl;
+            const sizeBytes = atob(dataUrl.split(',')[1]).length;
+            processedSize.textContent = `Size: ${(sizeBytes / 1024).toFixed(2)} KB`;
+            downloadBtn.href = dataUrl;
+            // Update download filename based on type
+            if (dataUrl.startsWith('data:image/png')) {
+                downloadBtn.download = 'processed-image.png';
+            } else {
+                downloadBtn.download = 'processed-image.jpg';
+            }
+        }
+
+        function setLoading(isLoading) {
+            processBtn.disabled = isLoading;
+            processBtnText.textContent = isLoading ? 'Processing...' : 'Process Image';
+            loader.classList.toggle('hidden', !isLoading);
+        }
+    </script>
+</body>
+</html>
